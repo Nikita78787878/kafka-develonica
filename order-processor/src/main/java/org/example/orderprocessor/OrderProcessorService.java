@@ -39,24 +39,49 @@ public class OrderProcessorService {
             System.out.println("👂 Консьюмер слушает топик orders.new ...");
 
             while (true) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(200));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
 
                 for (ConsumerRecord<String, String> record : records) {
+                    long receiveTime = System.currentTimeMillis();
                     String orderId = record.key();
                     String orderData = record.value();
 
-                    boolean valid = orderData.contains("@"); // простая валидация email
-                    String targetTopic = valid ? "orders.processed" : "orders.failed";
+                    try {
+                        // Проверка на poison pill
+                        if (orderData == null || orderData.contains("poison")) {
+                            System.err.printf("💀 Обнаружено Poison Pill [%s]: %s%n", orderId, orderData);
+                            producer.send(new ProducerRecord<>("orders.reliable", orderId, orderData));
+                            continue;
+                        }
 
-                    producer.send(new ProducerRecord<>(targetTopic, orderId, orderData));
+                        boolean valid = orderData.contains("@");
+                        String targetTopic = valid ? "orders.processed" : "orders.failed";
 
-                    System.out.println(String.format("Консюмер принял сообщение c id: %s и значением amount: %s читая топик orders.new и отправил запись дальше в топик: %s. " +
-                                    "Т.к. сообщение пришедшие в orders.new: %s",
-                            orderId, orderData, targetTopic,  valid ? "✅ валидное" : "❌ не валидное"));
+                        long sendTime = extractTimestamp(orderData);
+                        long latency = (sendTime > 0) ? receiveTime - sendTime : -1;
 
-//                    consumer.commitSync(); // ручной коммит
+                        producer.send(new ProducerRecord<>(targetTopic, orderId, orderData));
+
+                        System.out.printf("✅ Обработано [%s], топик → %s, задержка=%d мс%n",
+                                orderId, targetTopic, latency);
+
+                    } catch (Exception e) {
+                        System.err.printf("❌ Ошибка обработки [%s]: %s%n", orderId, e.getMessage());
+                        producer.send(new ProducerRecord<>("orders.reliable", orderId, orderData));
+                    }
                 }
             }
+        }
+    }
+
+    private long extractTimestamp(String json) {
+        try {
+            int idx = json.indexOf("\"ts\":");
+            if (idx == -1) return -1;
+            String sub = json.substring(idx + 5).replaceAll("[^0-9]", "");
+            return Long.parseLong(sub);
+        } catch (Exception e) {
+            return -1;
         }
     }
 

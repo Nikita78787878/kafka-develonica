@@ -90,15 +90,18 @@ public class OrderGatewayService implements AutoCloseable {
             System.out.println("🚀 Продюсер запущен. Отправка сообщений... (Ctrl+C для выхода)");
 
             while (true) {
+                long now = System.currentTimeMillis();
 
-                // --- ИСПРАВЛЕННАЯ ЛОГИКА ---
-                // 1. Готовим данные (JSON-строку) с нужным amount
-                String data1 = String.format("{ \"email\": \"user@example.com\", \"amount\": %d }", i);
-                String data2 = String.format("{ \"email\": \"bad-email\", \"amount\": %d }", i);
+                // Валидное сообщение
+                String data1 = String.format("{\"email\": \"user@example.com\", \"amount\": %d, \"ts\": %d}", i, now);
 
-                // 2. Отправляем, используя СТАТИЧНЫЕ ключи и готовые данные
-                service.sendOrder("order-1", data1);
-                service.sendOrder("order-2", data2);
+                // Невалидное сообщение (poison pill)
+                String data2 = String.format("{\"email\": \"bad-email\", \"amount\": %d, \"ts\": %d}", i, now);
+                String poison = "💀 poison-pill";
+
+                service.sendOrder("order-valid-" + i, data1);
+                service.sendOrder("order-invalid-" + i, data2);
+                service.sendOrder("poison-" + i, poison);
 
                 Thread.sleep(1000);
                 i++;
@@ -111,20 +114,14 @@ public class OrderGatewayService implements AutoCloseable {
      * тот, что был создан в конструкторе (this.producer).
      */
     public void sendOrder(String orderId, String orderData) {
+        ProducerRecord<String, String> record = new ProducerRecord<>(topic, orderId, orderData);
+        long start = System.currentTimeMillis();
 
-        ProducerRecord<String, String> record =
-                new ProducerRecord<>(topic, orderId, orderData);
-
-        // Просто используем `producer`, который уже есть
         producer.send(record, (RecordMetadata metadata, Exception exception) -> {
             if (exception == null) {
-                // При acks=0 metadata почти бесполезна (offset будет -1), т.к. мы не ждем ответа
-                System.out.printf("✅ (Предположительно) Записалось: ключ: %s, значение: %s\n",
-                        orderId, orderData);
+                System.out.printf("✅ Отправлено [%s]: %s (t=%d)%n", orderId, orderData, start);
             } else {
-                // А вот сюда будет прилетать ошибка, когда ты остановишь 'docker stop kafka'
-                System.err.printf("❌ Вернулась ошибка, ключ: %s; ошибка: %s\n",
-                        orderId, exception.getMessage());
+                System.err.printf("❌ Ошибка при отправке [%s]: %s%n", orderId, exception.getMessage());
             }
         });
     }
