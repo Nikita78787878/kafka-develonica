@@ -18,7 +18,6 @@ import java.util.Properties;
  *    В продюсере:
  *          - ask: 0, т.к. по умолчанию 1
  */
-
 public class OrderProcessorService {
 
     public static void main(String[] args) {
