@@ -2,5 +2,17 @@ spring:
   application:
     name: order-gateway
 
+  # 👇 ДОБАВЬ ЭТОТ БЛОК
+  docker:
+    compose:
+      enabled: false
+  # 👆 ЭТО ОТКЛЮЧИТ АВТОМАТИЧЕСКИЙ ЗАПУСК ДОКЕРА
+
   kafka:
     bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      properties:
+        schema.registry.url: http://localhost:8081
+        auto.register.schemas: true

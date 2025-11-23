@@ -1,6 +1,25 @@
 spring:
   application:
     name: order-processor
+  devtools:
+    restart:
+      enabled: false
 
   kafka:
     bootstrap-servers: localhost:9092
+
+    consumer:
+      group-id: order-processor-group
+      auto-offset-reset: earliest
+
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+
+      properties:
+        schema.registry.url: http://localhost:8081
+
+        # нужно, если хочешь получать OrderPlaced, а НЕ GenericRecord
+        specific.avro.reader: true
+
+        # иногда обязательно
+        value.subject.name.strategy: io.confluent.kafka.serializers.subject.TopicNameStrategy
